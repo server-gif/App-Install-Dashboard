@@ -1,0 +1,20 @@
+name = "app-install-dashboard"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+account_id = "af34905ea22dd12f78b055fee6e3a890"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+[vars]
+# Dashboard ni date/time ni timezone (minutes). India (IST) = 330, UTC = 0
+TZ_OFFSET_MIN = "330"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "installs-db"
+database_id = "a479437e-dafc-47f3-a33a-ee28e60e1891"
+
+[observability]
+enabled = true
