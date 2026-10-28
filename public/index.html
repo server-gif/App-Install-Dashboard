@@ -29,7 +29,12 @@ body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,-ap
 .main{flex:1;min-width:0;display:flex;flex-direction:column}
 .top{display:none;background:var(--card);border-bottom:1px solid var(--line);padding:10px 14px;align-items:center;gap:10px;position:sticky;top:0;z-index:20}
 .burger{background:none;border:1px solid var(--line);border-radius:8px;padding:6px 9px;cursor:pointer;color:var(--text);display:grid}
-main{padding:20px;max-width:1600px;margin:0;width:100%}
+main{padding:20px;max-width:1600px;margin:0;width:100%;flex:1;display:flex;flex-direction:column}
+main>.card:last-child{margin-bottom:0}
+/* the last top-level card stretches to the bottom of the viewport, so no dead grey strip is left under the content */
+main>.card:last-child:has(.appcards),main>.card:last-child:has(.tablewrap){display:flex;flex-direction:column;flex:1;min-height:0}
+main>.card:last-child>.tablewrap{flex:1;max-height:none}
+main>.card:last-child>.appcards{flex:1;align-content:start}
 @media(min-width:1700px){main{padding:24px 32px}}
 @media(max-width:900px){
  .side{position:fixed;inset:0 auto 0 0;z-index:50;transform:translateX(-100%);transition:transform .18s;box-shadow:0 0 40px rgba(0,0,0,.25)}
@@ -122,6 +127,12 @@ dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);co
 dialog::backdrop{background:rgba(0,0,0,.5)}
 dialog h3{margin:0 0 12px}
 .checks{display:grid;gap:6px;max-height:220px;overflow:auto;margin:8px 0 12px;border:1px solid var(--line);border-radius:8px;padding:8px}
+.checks.cols{grid-template-columns:repeat(auto-fill,minmax(210px,1fr));max-height:300px}
+.uform{display:grid;grid-template-columns:minmax(230px,330px) 1fr;gap:16px 28px;align-items:start}
+.uform .u-side{display:grid;gap:10px;align-content:start}
+@media(max-width:820px){.uform{grid-template-columns:1fr}}
+table.users td:nth-child(3){white-space:normal}
+table.users td:last-child,table.users th:last-child{width:1%;text-align:right}
 .checks label{display:flex;gap:8px;align-items:center;cursor:pointer}
 .form-grid{display:grid;gap:10px}
 /* ===== styled system dialog (replaces native alert/confirm) ===== */
@@ -159,6 +170,7 @@ dialog h3{margin:0 0 12px}
 .csel-chev svg{width:15px;height:15px}
 .csel.open .csel-chev{transform:rotate(180deg)}
 .csel-panel{position:absolute;z-index:60;top:calc(100% + 6px);left:0;min-width:100%;width:max-content;max-width:min(420px,calc(100vw - 24px));max-height:280px;overflow-x:hidden;overflow-y:auto;background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow-lg);padding:4px}
+.csel.up .csel-panel{top:auto;bottom:calc(100% + 6px)}
 .csel-opt{padding:8px 10px;border-radius:7px;cursor:pointer;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}
 .csel-opt:hover{background:var(--brand-soft)}
 .csel-opt.on{background:var(--brand);color:#fff}
@@ -385,7 +397,22 @@ function makeDropdown(opts = {}) {
   const find = () => items.find((o) => String(o.value) === String(value));
   const paint = () => { const it = find(); const lab = it ? it.html : (opts.placeholder || "Select"); btn.innerHTML = `<span class="csel-lab">${lab}</span><span class="csel-chev">${ICON.chev}</span>`; btn.title = it ? it.textContent || stripTags(it.html) : ""; };
   const build = () => { panel.innerHTML = items.length ? items.map((o) => `<div class="csel-opt${String(o.value) === String(value) ? " on" : ""}" data-v="${esc(o.value)}" title="${esc(stripTags(o.html))}">${o.html}</div>`).join("") : `<div class="csel-empty">Nothing here</div>`; };
-  const position = () => { if (panel.hidden) return; panel.style.left = "0px"; const w = panel.offsetWidth, wr = wrap.getBoundingClientRect(); let left = 0; if (wr.left + w > window.innerWidth - 8) left = window.innerWidth - 8 - wr.left - w; if (wr.left + left < 8) left = 8 - wr.left; panel.style.left = left + "px"; };
+  const position = () => {
+    if (panel.hidden) return;
+    // vertical: flip the panel above the button when it would not fit below (and there is more room up)
+    const wr = wrap.getBoundingClientRect(), gap = 6, vh = window.innerHeight;
+    panel.style.maxHeight = ""; // reset last open's clamp so offsetHeight is the natural height
+    const below = vh - wr.bottom - gap, above = wr.top - gap;
+    const up = panel.offsetHeight > below && above > below;
+    wrap.classList.toggle("up", up);
+    panel.style.maxHeight = Math.max(120, Math.min(280, (up ? above : below) - 8)) + "px";
+    // horizontal: keep inside the viewport
+    panel.style.left = "0px";
+    const w = panel.offsetWidth; let left = 0;
+    if (wr.left + w > window.innerWidth - 8) left = window.innerWidth - 8 - wr.left - w;
+    if (wr.left + left < 8) left = 8 - wr.left;
+    panel.style.left = left + "px";
+  };
   btn.onclick = (e) => { e.stopPropagation(); const will = panel.hidden; closeAllCsel(); panel.hidden = !will; wrap.classList.toggle("open", !panel.hidden); if (panel.hidden) return; build(); position(); };
   panel.onclick = (e) => { const o = e.target.closest(".csel-opt"); if (!o) return; value = o.dataset.v; build(); paint(); panel.hidden = true; wrap.classList.remove("open"); onChange && onChange(value); };
   wrap.append(btn, panel); paint();
@@ -693,7 +720,7 @@ async function viewDashboard() {
   m.innerHTML = `<div class="toolbar" style="justify-content:space-between;align-items:flex-end">
       <div><h2 style="margin:0 0 2px;font-size:16px">Apps</h2><p class="muted" style="margin:0;font-size:13px">Click an app card to open its details on a separate page.</p></div>
       <div class="row"><span id="dashrg"></span><input id="appsearch" type="search" placeholder="Search apps by name or package\u2026" value="${esc(state.appSearch || "")}" style="min-width:260px;max-width:340px"></div></div>
-    <div class="appcards" id="appcards"></div>`;
+    <div class="card"><div class="appcards" id="appcards"></div></div>`;
   $("#appsearch").oninput = (e) => { state.appSearch = e.target.value; drawAppCards(); };
   rangeControl($("#dashrg"), state.dashRange, () => loadDashCards(), { emptyLabel: "All time" });
   drawAppCards();
@@ -915,13 +942,14 @@ async function viewUsers() {
   const picked = (el) => [...el.querySelectorAll("input[type=checkbox]:checked")].map((c) => Number(c.value));
 
   m.innerHTML = `<div class="card"><h2>Create sub user</h2><p class="sub">A sub user can only see data for the apps selected here.</p>
-    <form id="uf" class="form-grid" style="max-width:440px">
-    <input name="username" placeholder="Username" required autocomplete="off"><input name="password" type="password" placeholder="Password (min 8)" required autocomplete="new-password">
-    <div><div class="muted">Allowed apps</div><div class="checks" id="uc">${checks()}</div></div><div class="msg" id="um"></div><button class="btn">Create user</button></form></div>
-    <div class="card"><h2>Users</h2><div class="tablewrap"><table><thead><tr><th>Username</th><th>Role</th><th>Apps with access</th><th></th></tr></thead><tbody id="ut">
+    <form id="uf" class="uform">
+    <div class="u-side"><input name="username" placeholder="Username" required autocomplete="off"><input name="password" type="password" placeholder="Password (min 8)" required autocomplete="new-password">
+    <div class="msg" id="um"></div><button class="btn">Create user</button></div>
+    <div><div class="muted">Allowed apps</div><div class="checks cols" id="uc">${checks()}</div></div></form></div>
+    <div class="card"><h2>Users</h2><div class="tablewrap"><table class="users"><thead><tr><th>Username</th><th>Role</th><th>Apps with access</th><th></th></tr></thead><tbody id="ut">
     ${users.map((u) => `<tr><td><b>${esc(u.username)}</b></td><td>${u.role === "admin" ? "Main admin" : "Sub user"}</td>
     <td>${u.role === "admin" ? '<span class="muted">All apps</span>' : u.app_ids.length ? u.app_ids.map((i) => `<span class="chip">${esc(appName[i] || "?")}</span>`).join("") : '<span class="muted">None</span>'}</td>
-    <td class="row">${u.role === "admin" ? "" : `<button class="btn ghost sm" data-act="edit" data-id="${u.id}">Edit</button><button class="btn danger sm" data-act="del" data-id="${u.id}" data-name="${esc(u.username)}">Delete</button>`}</td></tr>`).join("")}</tbody></table></div></div>`;
+    <td class="num" style="white-space:nowrap">${u.role === "admin" ? "" : `<button class="btn ghost sm" data-act="edit" data-id="${u.id}">Edit</button><button class="btn danger sm" data-act="del" data-id="${u.id}" data-name="${esc(u.username)}">Delete</button>`}</td></tr>`).join("")}</tbody></table></div></div>`;
 
   $("#uf").onsubmit = async (e) => {
     e.preventDefault();
