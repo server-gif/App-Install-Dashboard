@@ -98,7 +98,7 @@ async function resolveIcon(pkg) {
       const html = await res.text();
       const m = html.match(/<meta property="og:image" content="([^"]+)"/) || html.match(/"image"\s*:\s*"([^"]+googleusercontent[^"]+)"/);
       if (m && /^https:\/\//.test(m[1])) return m[1];
-    } catch {}
+    } catch { }
   }
   // iOS App Store: iTunes lookup by bundle id -> artworkUrl100 (upscale to 256)
   try {
@@ -108,7 +108,7 @@ async function resolveIcon(pkg) {
       const art = j && j.results && j.results[0] && j.results[0].artworkUrl100;
       if (art) return art.replace(/100x100bb/, "256x256bb");
     }
-  } catch {}
+  } catch { }
   return null;
 }
 
@@ -330,19 +330,57 @@ async function handleApi(request, env, url) {
     const { tz, off } = tzInfo(env);
     const rf = dayInput(url.searchParams.get("from")), rt = dayInput(url.searchParams.get("to"));
     const r0 = rf && rt ? (rf <= rt ? [rf, rt] : [rt, rf]) : null;
+    // ?cards=1 = dashboard overview cards: per app the range count, today, the previous period,
+    // a zero-filled daily series for the mini chart and the top countries of that window
+    const cards = url.searchParams.get("cards") === "1";
+    const today = todayStr(tz);
+    // the card window is the picked range, or the last 30 days when nothing is picked
+    const Wf = r0 ? r0[0] : addDays(today, -29), Wt = r0 ? r0[1] : today;
+    const span = daySpan(Wf, Wt), prevFrom = addDays(Wf, -span), prevTo = addDays(Wf, -1);
+    const sel = [], binds = [];
+    if (cards || r0) { sel.push("(SELECT COUNT(*) FROM installs i WHERE i.app_id = a.id AND date(i.installed_at, ?) BETWEEN ? AND ?) AS period"); binds.push(off, Wf, Wt); }
+    if (cards) { sel.push("(SELECT COUNT(*) FROM installs i WHERE i.app_id = a.id AND date(i.installed_at, ?) = ?) AS today"); binds.push(off, today); }
     const base = `SELECT a.id, a.name, a.package_name, a.icon_url, a.created_at${isAdmin ? ", a.api_key" : ""},
-      (SELECT COUNT(*) FROM installs i WHERE i.app_id = a.id) AS total${r0 ? ", (SELECT COUNT(*) FROM installs i WHERE i.app_id = a.id AND date(i.installed_at, ?) BETWEEN ? AND ?) AS period" : ""} FROM apps a`;
+      (SELECT COUNT(*) FROM installs i WHERE i.app_id = a.id) AS total${sel.length ? ", " + sel.join(", ") : ""} FROM apps a`;
     const q = isAdmin
       ? env.DB.prepare(base + " ORDER BY a.name COLLATE NOCASE")
       : env.DB.prepare(
-          base + " JOIN user_apps ua ON ua.app_id = a.id WHERE ua.user_id = ? ORDER BY a.name COLLATE NOCASE"
-        );
-    // placeholders appear before the user filter, so the range binds first, then the user id (bind returns a NEW statement)
-    let stmt = q;
-    if (r0) stmt = stmt.bind(off, r0[0], r0[1]);
-    if (!isAdmin) stmt = stmt.bind(user.id);
+        base + " JOIN user_apps ua ON ua.app_id = a.id WHERE ua.user_id = ? ORDER BY a.name COLLATE NOCASE"
+      );
+    // bind() REPLACES (does not merge) a statement's params, so every value must go in ONE call,
+    // in SQL order: the SELECT-clause range binds first, then the user filter id (sub users only)
+    const params = isAdmin ? binds : [...binds, user.id];
+    const stmt = params.length ? q.bind(...params) : q;
     const { results } = await stmt.all();
-    return json({ apps: results, range: r0 ? { from: r0[0], to: r0[1] } : null });
+    if (cards && results.length) {
+      const ids = results.map((a) => a.id), ph = ids.map(() => "?").join(",");
+      const S = (sql, ...p) => env.DB.prepare(sql).bind(...p);
+      const [prevR, dailyR, ctyR] = await env.DB.batch([
+        S("SELECT app_id, COUNT(*) c FROM installs WHERE app_id IN (" + ph + ") AND date(installed_at, ?) BETWEEN ? AND ? GROUP BY app_id", ...ids, off, prevFrom, prevTo),
+        S("SELECT app_id, date(installed_at, ?) d, COUNT(*) c FROM installs WHERE app_id IN (" + ph + ") AND date(installed_at, ?) BETWEEN ? AND ? GROUP BY app_id, d", off, ...ids, off, Wf, Wt),
+        S("SELECT app_id, country k, COUNT(*) c FROM installs WHERE app_id IN (" + ph + ") AND date(installed_at, ?) BETWEEN ? AND ? GROUP BY app_id, k ORDER BY c DESC", ...ids, off, Wf, Wt),
+      ]);
+      const prevMap = new Map(prevR.results.map((r) => [r.app_id, r.c]));
+      const daily = new Map(), tops = new Map();
+      for (const r of dailyR.results) daily.set(r.app_id + "|" + r.d, r.c);
+      for (const r of ctyR.results) {
+        let arr = tops.get(r.app_id);
+        if (!arr) tops.set(r.app_id, (arr = []));
+        if (arr.length < 3) arr.push({ k: r.k, c: r.c });
+      }
+      for (const a of results) {
+        const series = [];
+        for (let i = 0; i < span; i++) series.push(daily.get(a.id + "|" + addDays(Wf, i)) || 0);
+        a.series = series;
+        a.prev = prevMap.get(a.id) || 0;
+        a.top = tops.get(a.id) || [];
+      }
+    }
+    return json({
+      apps: results,
+      range: r0 ? { from: r0[0], to: r0[1] } : null,
+      window: cards ? { from: Wf, to: Wt, days: span, picked: !!r0, prev_from: prevFrom, prev_to: prevTo } : null,
+    });
   }
 
   if (path === "/api/stats" && method === "GET") return stats(env, user, url);

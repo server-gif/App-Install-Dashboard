@@ -67,6 +67,12 @@ Test suro thi aekje data delete kari dechhe, etle live par chale tyare "Create m
 - Eela `apps` ma `icon_url TEXT` column che (nava DB mate `schema.sql` ma j che; purana DB mate `migrations/002_app_icon.sql`).
 - Refresh: `POST /api/apps/<id>/icon` (admin) - package name badlay ke navo set thay to icon panee fetch thay.
 
+## Dashboard na app cards (overview)
+- Dashboard par darek app ek **overview card** thi dekhay: icon + name/package, pettyu stat strip (selected period na installs + prev period sarhu ▲/▼ %, all-time total, aaje na installs), niche **daily trend chart** (hover karyare date + count dekhay), ane foot ma top country chips + peak day.
+- Card par click / Enter dabavya thi app nu **full detail page** (`#/app/<id>`) khulechhe - tame etle list par quick view ane andar deep view, badhu ek j sathe malse.
+- Data: `GET /api/apps?cards=1[&from=&to=]` darek app mate `period`, `today`, `prev`, `series` (daily counts, zero-filled) ane `top` (max 3 country) aape, sathe top-level `window` (`from`, `to`, `days`, `picked`). Range select na kari to window aapole **last 30 days** rahe - etle chart ketyare khali rahe nahi.
+- `cards=1` vagar aa endpoint evo j halko rahe che (eela `total`, ane from/to aape to `period`) - Apps & API ane detail page mate extra query chale nahi.
+
 ## Install track karvani API (mobile app mathi)
 
 ```
@@ -95,12 +101,10 @@ Body: {
 
 Badha endpoints server par j permission check kare chhe - sub user ne fakat aapeli apps no j data male chhe.
 
-**Date filter:** Dashboard detail, By Country ane Installs - badha jaga eka j **DateRangePicker** calendar vaparay chhe (presets: Today / Last 7 / 30 / 90 / 365 days, athva custom from-to range). `days=N` akeli j vithe badhva-dine anchor thay chhe; `from`/`to` aapya to eka spast range vaparay (donha eka j API ma support chhe).
+**Date filter:** Dashboard na cards, app detail ane backend APIs - badha jagya eka j **DateRangePicker** calendar vaparay chhe (presets: Today / Last 7 / 30 / 90 / 365 days, athva custom from-to range). `days=N` akeli j vithe badhva-dine anchor thay chhe; `from`/`to` aapya to eka spast range vaparay (donha eka j API ma support chhe).
 
-## Dashboard (side bar jeema 5 views chhe)
-- **Dashboard** - app na **cards** (package name thi Play Store / App Store nu **icon**); koi card par click karo to teni detail niche khule (Total/Today/Period KPIs + Country breakdown + recent installs). Koi graph/chart nathi.
-- **By Country** - country x app heat matrix. Koi row par click karvo to tema raw installs khulse.
-- **Installs** - badha stored records; country / date-range / search filters ane Export CSV.
+## Dashboard (side bar jeema 3 views chhe)
+- **Dashboard** - app na **overview cards** (icon + stat strip + daily trend chart + country chips); card par click karo to **alag detail page** (`#/app/<id>`) khule - Total/Today/Period KPIs + Country breakdown + recent installs.
 - **Apps & API** (admin) - apps banavo (package name aavyu to icon auto-fetch thay), API key copy, ane ready-to-paste cURL / Android / iOS / Web code snippets. **Icon** button thi store icon panee fetch/refresh kari shake.
 - **Users** (admin) - sub users banavo ane app-wise permissions aapo.
 
