@@ -271,6 +271,13 @@ async function handleApi(request, env, url) {
     return json({ needs_setup: r.c === 0 });
   }
 
+  // Public, minimal: only app icon URLs for the login page's orbit badges (no names, packages, keys or counts).
+  // Icons are already public store URLs; returns [] when none, so the login keeps its brand-logo fallback.
+  if (path === "/api/branding" && method === "GET") {
+    const r = await env.DB.prepare("SELECT icon_url FROM apps WHERE icon_url IS NOT NULL GROUP BY icon_url ORDER BY MAX(id) DESC LIMIT 20").all();
+    return json({ icons: r.results.map((x) => x.icon_url) });
+  }
+
   if (path === "/api/setup" && method === "POST") {
     const b = await request.json().catch(() => ({}));
     const username = clean(b.username, 32).toLowerCase();
